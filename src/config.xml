@@ -1,0 +1,5 @@
+<?xml version="1.0" ?>
+<config>
+	<phrase max_length="5" />
+	<raw_data path="/Users/demecoffee/code/twitter_taxonomy/data/raw.txt" />
+</config>
