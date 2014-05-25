@@ -10,6 +10,7 @@ if len(sys.argv) < 2:
 	print("Usage: {:s} <configure_file_path>".format(sys.argv[0]), file = sys.stderr)
 	exit(-1)
 
+#sys.stdout = codecs.getwriter('utf-8')(sys.__stdout__) 
 cfg_reader = configReader.configReader(sys.argv[1])
 ret = cfg_reader.loadConfig()
 
@@ -18,9 +19,6 @@ if ret != 0:
 	exit(-1)
 
 wiki = wikiEngine.wikiEngine()
-ret = wiki._get_longest_phrase("peoples", "republic", "of", "china")
-
-if type(ret) is int:
-	print('Get longest phrase fail: {}'.format(ret))
-else:
-	print('Longest phrase: {}, normalized: {}, pageid: {}'.format(ret[0], ret[1], ret[2]))
+#ret = wiki.getLinks("peoples", "republic", "of", "china")
+ret = wiki.getLinks("japan")
+#ret = wiki._get_longest_phrase("peoples", "republic", "of", "china")
