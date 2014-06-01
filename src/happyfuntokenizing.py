@@ -134,10 +134,14 @@ html_entity_digit_re = re.compile(r"&#\d+;")
 html_entity_alpha_re = re.compile(r"&\w+;")
 amp = "&amp;"
 
+#simple url detection
+url_re = re.compile(r"http://\S*")
+
 ######################################################################
 
 class Tokenizer:
-    def __init__(self, preserve_case=False):
+    def __init__(self, preserve_case=False, no_url=False):
+        self.no_url = no_url
         self.preserve_case = preserve_case
 
     def tokenize(self, s):
@@ -151,6 +155,11 @@ class Tokenizer:
         except UnicodeDecodeError:
             s = str(s).encode('string_escape')
             s = unicode(s)
+        #url removal
+        if self.no_url:
+            urls = url_re.findall(s)
+            for url in urls:
+                s = s.replace(url, ' ')
         # Fix HTML character entitites:
         s = self.__html2unicode(s)
         # Tokenize:
@@ -203,22 +212,25 @@ class Tokenizer:
                 s = s.replace(ent, unichr(htmlentitydefs.name2codepoint[entname]))
             except:
                 pass                    
-            s = s.replace(amp, " and ")
+		s = s.replace(amp, " and ")
         return s
 
 ###############################################################################
 
 if __name__ == '__main__':
-    tok = Tokenizer(preserve_case=False)
+    tok = Tokenizer(preserve_case=False, no_url=True)
     samples = (
         u"RT @ #happyfuncoding: this is a typical Twitter tweet :-)",
         u"HTML entities &amp; other Web oddities can be an &aacute;cute <em class='grumpy'>pain</em> >:(",
         u"It's perhaps noteworthy that phone numbers like +1 (800) 123-4567, (800) 123-4567, and 123-4567 are treated as words despite their whitespace.",
 		u"U.S.A is a country",
+		u"People's Republic of China",
+		u"RT @NBA: The impact of #DRose's Chicago return (8pm/et, TNT) will be felt in more places than the court (via @AschNBA): http://t.co/an5eMwD…",
         )
 
     for s in samples:
         print "======================================================================"
         print s
         tokenized = tok.tokenize(s)
+        tokenized = map((lambda x : x if x[0] != "#" and x[0] != '@' else x[1:]), tokenized)
         print "\n".join(tokenized)

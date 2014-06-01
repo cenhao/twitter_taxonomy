@@ -1,12 +1,24 @@
 from __future__ import print_function
-import httplib, urllib
+import httplib, urllib, urllib2
+import threading
 import json
 import sys
 import lru
+import random
 
-class wikiEngine:
+class wikiEngine2:
 	def __init__(self):
+		self._proxy_list = {}
+		self.engine_lock = threading.Lock();
 		pass
+
+	def set_proxy(self, proxy_url, port):
+		self.engine_lock.acquire()
+		self._proxy_list[threading.current_thread().ident] = [proxy_url, port]
+		self.engine_lock.release()
+
+	def del_proxy(self):
+		del self._proxy_list[threading.current_thread().ident]
 
 	@lru.lru_cache(maxsize = 10000000)#10,000,000 * 25 = 250 mb
 	def _check_phrase(self, phrase):
@@ -19,32 +31,43 @@ class wikiEngine:
 			'redirects' : '',
 			'format' : 'json'
 			})
-		header = {'user_agent' : 'cenhao123 at gmail dot com'}
+		header = {'user_agent' : random.random()}
 
 		try:
-			conn = httplib.HTTPConnection('en.wikipedia.org', 80, timeout=3)
-			conn.request('GET', '/w/api.php?' + get_para, headers = header)
-			rsp = conn.getresponse()
+			opener = 0;
 
-			if rsp.status != 200:
-				print('Requesting Wiki fails: {} {}'.format(rsp.status, rsp.reason), file = sys.stderr)
+			if threading.current_thread().ident in self._proxy_list:
+				proxy_handler = urllib2.ProxyHandler({'http' : "{0:s}:{1:d}".format(self._proxy_list[threading.current_thread().ident][0],
+					self._proxy_list[threading.current_thread().ident][1])})
+				opener = urllib2.build_opener(proxy_handler)
+			else:
+				opener = urllib2.build_opener()
+
+			req = urllib2.Request('http://en.wikipedia.org/w/api.php?' + get_para, headers=header);
+			rsp = opener.open(req, timeout=5)
+
+			if rsp.getcode() != 200:
+				print('Requesting Wiki fails: {0}'.format(rsp.getcode()), file = sys.stderr)
 				failcnt = failcnt + 1
 
 			data = rsp.read()
-		except httplib.HTTPException as e:
-			print('HTTP connection failure: {:s}'.format(e), file = sys.stderr)
+			res = json.loads(data)
+		except urllib2.HTTPError as e:
+			print('HTTP Error: {0:d} {1:s}'.format(e.code, e.reason), file=sys.stderr)
+			return -1
+		except urllib2.URLError as e:
+			print('URL Error: {0:s}'.format(e.reason), file = sys.stderr)
 			return -1
 		except:
 			print('Unknow system failure', file = sys.stderr)
 			return -1
 
-		res = json.loads(data)
 		res = res['query']
 		ret = []
 
 		ret.append(0)
 		for pageid in res['pages']:
-			ret[0] = pageid
+			ret[0] = int(pageid)
 
 		if ret[0] < 0:#no such entry
 			return -2
@@ -85,17 +108,23 @@ class wikiEngine:
 				if ret == -1:#failure
 					failcnt = 0
 
-					while failure < 3:
-						ret = _check_phrase.__wrapped__(phrases[i])
+					while failcnt < 3:
+						ret = self._check_phrase.__wrapped__(self, phrases[i])
 
 						if isinstance(ret, int) and ret == -1:
-							failcnt = failure + 1
+							failcnt = failcnt + 1
 						else:
 							break
+
+					if failcnt >= 3:
+						print("get_longest_phrase encounter an error", file=sys.stderr)
+						return -1
 
 			if isinstance(ret, list):
 				lengthOfPhrase = i + 1
 				break
+			else:
+				lengthOfPhrase = -2
 
 		return [lengthOfPhrase, phrases[i], ret]
 
@@ -105,31 +134,53 @@ class wikiEngine:
 			'action' : 'query',
 			'list' : 'backlinks',
 			'bllimit' : 'max',
-			'blpageid' : ret[2],
+			'blpageid' : pageid,
 			'blfilterredir' : 'nonredirects',
 			'bldir' : 'ascending',
 			'format' : 'json'
 			})
-		header = {'user_agent' : 'cenhao123 at gmail dot com'}
+		header = {'user_agent' : random.random()}
 		failcnt = 0
 		data = 0
 		backlinks = []
 
+		opener = 0
+
+		try:
+			if threading.current_thread().ident in self._proxy_list:
+				proxy_handler = urllib2.ProxyHandler({'http' : '{0:s}:{1:d}'.format(self._proxy_list[threading.current_thread().ident][0],
+					self._proxy_list[threading.current_thread().ident][1])})
+				opener = urllib2.build_opener(proxy_handler)
+			else:
+				opener = urllib2.build_opener()
+		except urllib2.HTTPError as e:
+			print('HTTP Error: {0:d} {1:s}'.format(e.code, e.reason), file=sys.stderr)
+		except urllib2.URLError as e:
+			print('URL Error: {0:s}'.format(e.reason), file = sys.stderr)
+			return -1
+		except:
+			print('Unknow system failure', file = sys.stderr)
+			return -1
+
 		while True:
 			if failcnt > 3: return -1
 			try:
-				conn = httplib.HTTPConnection('en.wikipedia.org', 80, timeout=3)
-				conn.request('GET', '/w/api.php?' + get_para, headers = header)
-				rsp = conn.getresponse()
+				req = urllib2.Request('http://en.wikipedia.org/w/api.php?' + get_para, headers=header);
+				rsp = opener.open(req, timeout=5)
 
-				if rsp.status != 200:
-					print('Requesting Wiki fails: {} {}'.format(rsp.status, rsp.reason), file = sys.stderr)
+				if rsp.getcode() != 200:
+					print('Requesting Wiki fails: {0}'.format(rsp.getcode()), file = sys.stderr)
 					failcnt = failcnt + 1
 					continue
 
 				data = rsp.read()
-			except httplib.HTTPException as e:
-				print('HTTP connection failure: {:s}'.format(e), file = sys.stderr)
+				res = json.loads(data)
+			except urllib2.HTTPError as e:
+				print('HTTP Error: {0:d} {1:s}'.format(e.code, e.reason), file=sys.stderr)
+				failcnt = failcnt + 1
+				continue
+			except urllib2.URLError as e:
+				print('URL Error: {0:s}'.format(e.reason), file = sys.stderr)
 				failcnt = failcnt + 1
 				continue
 			except:
@@ -138,10 +189,9 @@ class wikiEngine:
 				continue
 
 			failcnt = 0 #reset fail counter
-			res = json.loads(data)
 
 			for blk in res['query']['backlinks']:
-				print('pageid: {:d}'.format(blk['pageid']))#for debuging
+				print('pageid: {0:d}'.format(blk['pageid']))#for debuging
 				backlinks.append(blk['pageid'])
 
 			if 'query-continue' in res:
@@ -149,7 +199,7 @@ class wikiEngine:
 					'action' : 'query',
 					'list' : 'backlinks',
 					'bllimit' : 'max',
-					'blpageid' : ret[2],
+					'blpageid' : pageid,
 					'blfilterredir' : 'nonredirects',
 					'format' : 'json',
 					'bldir' : 'ascending',

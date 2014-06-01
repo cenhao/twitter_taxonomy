@@ -34,4 +34,10 @@ nosetests.xml
 .mr.developer.cfg
 .project
 .pydevproject
+
+#mac directory
 .DS_Store
+
+#intermidia files
+*.txt
+*.dat
